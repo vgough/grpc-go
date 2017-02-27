@@ -117,6 +117,7 @@ type options struct {
 	maxConcurrentStreams uint32
 	useHandlerImpl       bool // use http.Handler-based server
 	unknownStreamDesc    *StreamDesc
+	ctx                  context.Context
 }
 
 var defaultMaxMsgSize = 1024 * 1024 * 4 // use 4MB as the default message size limit
@@ -227,6 +228,13 @@ func UnknownServiceHandler(streamHandler StreamHandler) ServerOption {
 	}
 }
 
+// CustomContext returns a ServerOption that sets the context for the server.
+func CustomContext(ctx context.Context) ServerOption {
+	return func(o *options) {
+		o.ctx = ctx
+	}
+}
+
 // NewServer creates a gRPC server which has no service registered and has not
 // started to accept requests yet.
 func NewServer(opt ...ServerOption) *Server {
@@ -239,6 +247,9 @@ func NewServer(opt ...ServerOption) *Server {
 		// Set the default codec.
 		opts.codec = protoCodec{}
 	}
+	if opts.ctx == nil {
+		opts.ctx = context.Background()
+	}
 	s := &Server{
 		lis:   make(map[net.Listener]bool),
 		opts:  opts,
@@ -246,7 +257,7 @@ func NewServer(opt ...ServerOption) *Server {
 		m:     make(map[string]*service),
 	}
 	s.cv = sync.NewCond(&s.mu)
-	s.ctx, s.cancel = context.WithCancel(context.Background())
+	s.ctx, s.cancel = context.WithCancel(opts.ctx)
 	if EnableTracing {
 		_, file, line, _ := runtime.Caller(1)
 		s.events = trace.NewEventLog("grpc.Server", fmt.Sprintf("%s:%d", file, line))
